@@ -37,7 +37,8 @@ CANONICAL = {
 }
 # Lines matching these are dead without WordPress and are removed wholesale.
 DEAD_LINK = re.compile(
-    r"<link[^>]*(?:wp-json|oembed|/feed/|comments/feed)[^>]*>\s*", re.I)
+    r"<link[^>]*(?:wp-json|oembed|/feed/|comments/feed|xmlrpc\.php|"
+    r"rel=[\"']EditURI[\"'])[^>]*>\s*", re.I)
 # Metadata URLs that must stay absolute.
 KEEP_ABSOLUTE = re.compile(
     r'(<link[^>]+rel=["\']canonical["\'][^>]*>|'
