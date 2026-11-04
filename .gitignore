@@ -1,0 +1,7 @@
+# WordPress backup — contains live credentials and a database dump with user
+# records. It is a local reference artifact and must never be committed: this
+# repo is published by GitHub Pages from the repo root and must be public.
+wordpress/
+
+# Preview-only scratch
+.mirror-probe/
