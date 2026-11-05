@@ -3,7 +3,12 @@ import pathlib
 import re
 
 LIVE = 'https://www.zekerwaard.nl'
-HOST = r'https?://www\.zekerwaard\.nl'
+# The scheme is optional: WordPress emits protocol-relative references too
+# (Slider Revolution's image_lists carries data-src="//www.zekerwaard.nl/..."),
+# and wget --convert-links does not rewrite data-src. Requiring https? left
+# those pointing at the live origin. Non-capturing, so backreferences in
+# patterns built from HOST keep their numbering.
+HOST = r'(?:https?:)?//www\.zekerwaard\.nl'
 SLUGS = ('verzekeringen', 'hypotheken', 'over', 'contact')
 
 # page path -> prefix that reaches the repo root from that page
@@ -29,14 +34,21 @@ def read(path: pathlib.Path) -> str:
     return path.read_text(encoding='utf8', errors='replace')
 
 
-def attr_urls(html: str, attrs: str = 'src|href') -> set[str]:
+def attr_urls(html: str, attrs: str = 'src|href|data-src') -> set[str]:
     """Every URL in the named attributes, in either quote style, plus srcset
-    candidates and inline style url() values."""
+    candidates and inline style url() values.
+
+    The lookbehind is load-bearing. Without it the alternation matches any
+    attribute whose name merely ends in one of these, so Slider Revolution's
+    data-dbsrc="<base64>" was harvested as a URL and the served gate 404'd on
+    it. data-src is now audited on purpose rather than by that accident: the
+    mirror rewrites it, so its target has to exist.
+    """
     found: set[str] = set()
     for q in ('"', "'"):
-        found |= set(re.findall(rf'(?:{attrs})={q}([^{q}]+){q}', html))
+        found |= set(re.findall(rf'(?<![\w-])(?:{attrs})={q}([^{q}]+){q}', html))
     for q in ('"', "'"):
-        for ss in re.findall(rf'srcset={q}([^{q}]+){q}', html):
+        for ss in re.findall(rf'(?<![\w-])srcset={q}([^{q}]+){q}', html):
             found |= {c.strip().split()[0] for c in ss.split(',') if c.strip()}
     for raw in re.findall(r'url\(\s*(?:&quot;|["\'])?([^)\s]+?)(?:&quot;|["\'])?\s*\)', html):
         found.add(raw)

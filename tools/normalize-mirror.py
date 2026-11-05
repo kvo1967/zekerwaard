@@ -130,7 +130,7 @@ def normalize_page(path: pathlib.Path, prefix: str) -> dict:
     return c
 
 
-def strip_version_suffixes() -> int:
+def strip_version_suffixes() -> tuple[int, int]:
     """Rename *.css@ver=N / *.js@ver=N so the extension is terminal.
 
     wget's --restrict-file-names=windows turns the query into part of the
@@ -139,6 +139,12 @@ def strip_version_suffixes() -> int:
     in standards mode refuses to apply a stylesheet without a CSS MIME type,
     so the site renders unstyled. Font files are left alone: their MIME does
     not gate rendering and several would collide on rename.
+
+    The reference rewrite below runs whether or not anything was renamed. A
+    single-page re-capture installs a page whose references still carry the
+    ?ver= suffix while the files on disk were renamed by an earlier run, so
+    gating the rewrite on a rename left every such reference pointing at a
+    filename that no longer exists.
     """
     renames: dict[str, str] = {}
     for path in sorted(pathlib.Path('cms').rglob('*')):
@@ -154,8 +160,7 @@ def strip_version_suffixes() -> int:
         path.rename(target)
         renames[path.name] = stem
 
-    if not renames:
-        return 0
+    rewritten = 0
     for f in list(PAGES) + [c for c in pathlib.Path('cms').rglob('*')
                             if c.is_file() and c.suffix in ('.css', '.js')]:
         if not f.exists():
@@ -167,7 +172,8 @@ def strip_version_suffixes() -> int:
         text = re.sub(r'(\.(?:css|js))@[^"\'\s)>]*', r'\1', text)
         if text != original:
             f.write_text(text, encoding='utf8')
-    return len(renames)
+            rewritten += 1
+    return len(renames), rewritten
 
 
 def normalize_css() -> int:
@@ -204,7 +210,9 @@ def main() -> int:
     for path, prefix in PAGES.items():
         c = normalize_page(path, prefix)
         print(f'{str(path):28} ' + ' '.join(f'{k}={v}' for k, v in c.items()))
-    print(f'version-suffixed css/js renamed: {strip_version_suffixes()}')
+    renamed, rewritten = strip_version_suffixes()
+    print(f'version-suffixed css/js renamed: {renamed}; '
+          f'suffixed references rewritten in {rewritten} file(s)')
     print(f'stylesheet absolute urls rewritten: {normalize_css()}')
     print(f'robots.txt sitemap line removed: {normalize_robots()}')
     for p in problems:
