@@ -5,3 +5,7 @@ wordpress/
 
 # Preview-only scratch
 .mirror-probe/
+
+# Python build artifacts (never published)
+__pycache__/
+*.pyc
