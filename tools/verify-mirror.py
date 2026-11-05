@@ -125,7 +125,7 @@ def audit_served(base: str) -> None:
             check(f'GET /{rel}', False, str(e))
             continue
 
-        broken = []
+        broken, wrong_type = [], []
         for ref in sorted(attr_urls(body)):
             if ref.startswith(('http', '//', 'mailto:', 'tel:')):
                 continue
@@ -135,10 +135,23 @@ def audit_served(base: str) -> None:
                         urllib.request.Request(target, method='HEAD'), timeout=25) as rr:
                     if rr.status >= 400:
                         broken.append(f'{rr.status} {ref}')
+                        continue
+                    ct = rr.headers.get('Content-Type', '').split(';')[0].strip()
+                    path = urllib.parse.urlparse(target).path
+                    # A stylesheet served without a CSS MIME type is rejected
+                    # outright by a browser in standards mode, so the page
+                    # renders unstyled while still returning 200.
+                    if path.endswith('.css') and ct != 'text/css':
+                        wrong_type.append(f'{ref} -> {ct}')
+                    elif path.endswith('.js') and ct not in (
+                            'text/javascript', 'application/javascript'):
+                        wrong_type.append(f'{ref} -> {ct}')
             except Exception as e:
                 broken.append(f'{getattr(e, "code", "?")} {ref}')
         check(f'/{rel} assets all resolve', not broken,
               f'{len(broken)} broken: ' + '; '.join(broken[:4]) if broken else '')
+        check(f'/{rel} css/js served with correct MIME', not wrong_type,
+              f'{len(wrong_type)} wrong: ' + '; '.join(wrong_type[:3]) if wrong_type else '')
 
 
 def serve_and_audit() -> None:

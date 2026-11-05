@@ -130,6 +130,46 @@ def normalize_page(path: pathlib.Path, prefix: str) -> dict:
     return c
 
 
+def strip_version_suffixes() -> int:
+    """Rename *.css@ver=N / *.js@ver=N so the extension is terminal.
+
+    wget's --restrict-file-names=windows turns the query into part of the
+    filename, which fixes the 404 but leaves the extension non-terminal.
+    GitHub Pages then serves them as application/octet-stream, and a browser
+    in standards mode refuses to apply a stylesheet without a CSS MIME type,
+    so the site renders unstyled. Font files are left alone: their MIME does
+    not gate rendering and several would collide on rename.
+    """
+    renames: dict[str, str] = {}
+    for path in sorted(pathlib.Path('cms').rglob('*')):
+        if not path.is_file() or '@' not in path.name:
+            continue
+        stem, _, _ = path.name.partition('@')
+        if not stem.endswith(('.css', '.js')):
+            continue
+        target = path.with_name(stem)
+        if target.exists():
+            problems.append(f'rename collision: {path} -> {target}')
+            continue
+        path.rename(target)
+        renames[path.name] = stem
+
+    if not renames:
+        return 0
+    for f in list(PAGES) + [c for c in pathlib.Path('cms').rglob('*')
+                            if c.is_file() and c.suffix in ('.css', '.js')]:
+        if not f.exists():
+            continue
+        try:
+            text = original = read(f)
+        except (OSError, UnicodeError):
+            continue
+        text = re.sub(r'(\.(?:css|js))@[^"\'\s)>]*', r'\1', text)
+        if text != original:
+            f.write_text(text, encoding='utf8')
+    return len(renames)
+
+
 def normalize_css() -> int:
     total = 0
     for css in sorted(pathlib.Path('cms/wp-content/uploads/fusion-styles').glob('*')):
@@ -164,6 +204,7 @@ def main() -> int:
     for path, prefix in PAGES.items():
         c = normalize_page(path, prefix)
         print(f'{str(path):28} ' + ' '.join(f'{k}={v}' for k, v in c.items()))
+    print(f'version-suffixed css/js renamed: {strip_version_suffixes()}')
     print(f'stylesheet absolute urls rewritten: {normalize_css()}')
     print(f'robots.txt sitemap line removed: {normalize_robots()}')
     for p in problems:
